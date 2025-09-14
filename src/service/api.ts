@@ -34,9 +34,15 @@ export const api = {
     });
   },
 
-  getStatuses() {
+  getStatusesDirt() {
     return request({
-      url: "statuses",
+      url: "statuses/dirt",
+      method: "GET",
+    });
+  },
+  getStatusesDamage() {
+    return request({
+      url: "statuses/damage",
       method: "GET",
     });
   }

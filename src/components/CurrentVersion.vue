@@ -13,12 +13,24 @@
           </div>
           <div class="history-details">
             <div class="history-name">{{ item.filename }}</div>
-            <div style="width: fit-content; padding: 5px 10px;" :style="{ 'backgroundColor': colors[item.response.status]?.bg, 'color': colors[item.response.status]?.text }">
-              {{ colors[item.response.status]?.ru }}
+
+            <div style="width: fit-content; padding: 5px 10px;"  v-if="dirtyList.length" :style="{
+              'backgroundColor': getListColor(item.response, dirtyDefault, 'status1').bg, 
+              'color': getListColor(item.response, dirtyDefault, 'status1').color
+              }"
+            >
+              {{ getStatusText(item.response.status1, dirtyList) }}
+            </div>
+
+            <div style="width: fit-content; padding: 5px 10px;"  v-if="damageList.length" :style="{
+              'backgroundColor': getListColor(item.response, damageDefault, 'status2').bg, 
+              'color': getListColor(item.response, damageDefault, 'status2').color
+              }"
+            >
+              {{ getStatusText(item.response.status2, damageList) }}
             </div>
           </div>
         </li>
-        <!-- <button class="new-upload-btn" @click="loadMore">Загрузить ещё</button> -->
       </ul>
     </aside>
 
@@ -46,8 +58,23 @@
               <span class="result-value">{{ currentImage.filename }}</span>
             </div>
             <div class="result-row">
-              <span class="result-label">Статус:</span>
-              <span :style="{ 'backgroundColor': colors[currentImage.response.status]?.bg, 'color': colors[currentImage.response.status]?.text }">{{ colors[currentImage.response.status]?.ru }}</span>
+              <span class="result-label">Статусы:</span>
+              <div style="width: fit-content; padding: 5px 10px;"  v-if="dirtyList.length" :style="{
+              'backgroundColor': getListColor(currentImage.response, dirtyDefault, 'status1').bg, 
+              'color': getListColor(currentImage.response, dirtyDefault, 'status1').color
+              }"
+            >
+              {{ getStatusText(currentImage.response.status1, dirtyList) }}
+            </div>
+
+            <div style="width: fit-content; padding: 5px 10px;"  v-if="damageList.length" :style="{
+              'backgroundColor': getListColor(currentImage.response, damageDefault, 'status2').bg, 
+              'color': getListColor(currentImage.response, damageDefault, 'status2').color
+              }"
+            >
+              {{ getStatusText(currentImage.response.status2, damageList) }}
+            </div>
+
             </div>
             <button class="new-upload-btn" @click="resetUpload">Загрузить новый</button>
           </div>
@@ -66,12 +93,17 @@ import { api } from '@/service/api';
 import type { IHistoryList, TStatusColors } from '@/types/general';
 import { onMounted, ref } from 'vue';
 
-const defaultColors: TStatusColors = {
-  clean_car: { bg: "#e6f7e9", text: "#28a745" },
-  damaged_dirty_car: { bg: "#ffe0cc", text: "#ff6600" },
-  damaged_car: { bg: "#ffe8e8", text: "#dc3545" },
-  dirty_car: { bg: "#f9f5d7", text: "#b58900" },
-  unrecognized: { bg: "#f0f0f0", text: "#6b7280" }
+const damageDefault: TStatusColors = {
+  'not_damaged': { bg: "#e6f7e9", color: "#28a745" },
+  'little_damaged': { bg: "#ffe0cc", color: "#ff6600" },
+  'damaged': { bg: "#ffe8e8", color: "#dc3545" },
+  'severely_damaged': { bg: "#f9f5d7", color: "#b58900" },
+}
+const dirtyDefault: TStatusColors = {
+  'not_dirty': { bg: "#e6f7e9", color: "#28a745" },
+  'little_dirty': { bg: "#ffe0cc", color: "#ff6600" },
+  'dirty': { bg: "#ffe8e8", color: "#dc3545" },
+  'severely_dirty': { bg: "#f9f5d7", color: "#b58900" },
 }
 
 const history = ref<{
@@ -83,46 +115,46 @@ const history = ref<{
 });
 
 const isLoading = ref(false);
-const colors = ref({})
 
-//coo
+const dirtyList = ref([]);    
+const damageList = ref([]);
+
 const pagination = ref({
   page: 1,
   count: 20
 })
 
+const currentImage = ref({
+  filename: "",
+  response: { 
+    status1: "", 
+    status2: "", 
+    level: 1 
+  },
+});
+const currentFile = ref<any>(null);
+const fileInput = ref<any>(null);
+
 onMounted(async () => {
   isLoading.value = true;
-  const statusJson = await api.getStatuses()
-
-  const statusJsonObject = statusJson.reduce((acc, item) => {
-    acc[item.code] = item.name
-    return acc
-  }, {} as Record<string, string>)
-
-  const empty = { bg: "#fff", text: "#000" }
-
-  colors.value = statusJson.reduce((acc: TStatusColors, item) => {
-    const obj = {ru: statusJsonObject[item.code], ...defaultColors[item.code] || empty }
-    acc[item.code] = obj
-
-    return acc
-  }, {} as TStatusColors)
-
+  dirtyList.value = await api.getStatusesDirt()
+  damageList.value = await api.getStatusesDamage()
   history.value = await api.getHistory(pagination.value);
   isLoading.value = false;
 });
 
-const currentImage = ref({
-  filename: "",
-  response: { 
-    status: "clean_car", 
-    level: 1 
-  },
-});
+function getStatusText(status: string, list: any[]) {
+  const item = list.find(item => item.code === status);
+  return item?.name || status;
+}
 
-const currentFile = ref<any>(null);
-const fileInput = ref<any>(null);
+function getListColor(item: IHistoryList['response'], object: TStatusColors, statusKey: 'status1' | 'status2') {
+  if (statusKey in item) {
+    const status = item[statusKey];
+    return object[status]
+  }
+  return { bg: "#f0f0f0", color: "#000" };
+}
 
 const handleDrop = (event) => {
   const file = event.dataTransfer.files[0];
@@ -144,8 +176,11 @@ const triggerFileSelect = () => {
 };
 
 const processFile = async  (file) => {
+  
+  isLoading.value = true;
   const res = await api.uploadFile(file);
-  currentImage.value.response.status = res.status;
+  currentImage.value.response.status1 = res.status1;
+  currentImage.value.response.status2 = res.status2;
   currentImage.value.response.level = res.level;
   currentImage.value.filename = file.name;
 
@@ -154,8 +189,10 @@ const processFile = async  (file) => {
     currentFile.value = e.target.result
   };
   reader.readAsDataURL(file);
+  isLoading.value = false;
   
   history.value = await api.getHistory({ page: 1, count: 20 });
+  
 };
 
 const selectHistoryItem = (item) => {
